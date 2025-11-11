@@ -19,6 +19,23 @@ const HIGHLIGHT_COLOR = 0xfbd38d; // Gold/Royal highlight
 window.resetCamera = resetCamera; 
 window.updateBoardFromFEN = updateBoardFromFEN; // Expose for Firebase to call
 
+// --- Animation Loop ---
+
+/**
+ * Renders the scene and updates controls every frame.
+ */
+function animate() {
+    requestAnimationFrame(animate);
+
+    // Required for the damping effect of the controls
+    if (controls) {
+        controls.update(); 
+    }
+
+    renderer.render(scene, camera);
+}
+
+
 // --- Coordinate Conversion Helpers (remain the same) ---
 
 /**
@@ -48,7 +65,7 @@ function to3DCoords(algebraic) {
 }
 
 
-// --- Three.js Setup (init, animate, etc.) ---
+// --- Three.js Setup (init, utility functions, event handlers) ---
 
 function init() {
     // 1. Scene Setup
@@ -100,8 +117,6 @@ function init() {
     // 7. Raycasting Setup 
     raycaster = new THREE.Raycaster();
     mouse = new THREE.Vector2();
-
-    // 8. Event Listeners - REMOVED from here, moved to window.onload
 
     // Initial draw
     updateBoardFromFEN(game.fen());
@@ -501,14 +516,23 @@ function onTouchStart(event) {
 // Start the application after the window loads
 window.onload = function () {
     init();
+    
+    // The animate() function is now defined above init(), so this call is safe.
     animate(); 
 
-    // --- CRITICAL FIX: Attach event listeners here after functions are defined ---
+    // --- Attach event listeners to the renderer's DOM element for reliable interaction ---
     window.addEventListener('resize', onWindowResize, false);
     
-    // Attaching the touch/click handlers to the renderer's DOM element for focus
-    renderer.domElement.addEventListener('touchstart', onTouchStart, false); 
-    renderer.domElement.addEventListener('click', onClick, false); 
-    renderer.domElement.addEventListener('touchend', onTouchend, false); 
+    // We must wait for init() to run and renderer to be created before accessing renderer.domElement
+    if (renderer && renderer.domElement) {
+        renderer.domElement.addEventListener('touchstart', onTouchStart, false); 
+        renderer.domElement.addEventListener('click', onClick, false); 
+        renderer.domElement.addEventListener('touchend', onTouchend, false); 
+    } else {
+        // Fallback for older browsers or quick loading situations
+        window.addEventListener('touchstart', onTouchStart, false);
+        window.addEventListener('click', onClick, false);
+        window.addEventListener('touchend', onTouchend, false);
+    }
     // --------------------------------------------------------------------------
 }
