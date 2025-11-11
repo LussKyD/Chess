@@ -417,20 +417,27 @@ function handleClick(clientX, clientY) {
     // ----------------------------------------------------
     if (!userRole) {
         // This should only happen during initialization. 
-        // In offline mode, userRole is set to 'w' immediately by firebase.js.
         document.getElementById('status-message').textContent = 
             `Please wait for the game to load your player role.`;
         highlightPiece(null);
         return; 
     }
     
-    // Check if it's the current user's turn
-    if (userRole !== turnColor) {
-        document.getElementById('status-message').textContent = 
-            `It is ${turnColor === 'w' ? 'White' : 'Black'}'s turn, not yours.`;
-        highlightPiece(null);
-        return;
+    // CRITICAL FIX: Only enforce turn and role restrictions if we are connected to Firebase.
+    // In Offline Mode, we allow all moves to enable single-player testing.
+    if (window.isFirebaseConnected) {
+        // Check if it's the current user's turn
+        if (userRole !== turnColor) {
+            document.getElementById('status-message').textContent = 
+                `It is ${turnColor === 'w' ? 'White' : 'Black'}'s turn, not yours.`;
+            highlightPiece(null);
+            return;
+        }
+    } else {
+        // In Offline Mode, update the status message after a move to reflect the new turn
+        document.getElementById('status-message').textContent = `Offline Mode. It is ${turnColor === 'w' ? 'White' : 'Black'}'s turn.`;
     }
+    
     // ----------------------------------------------------
     
     // 1. Calculate mouse position in normalized device coordinates (-1 to +1)
@@ -455,9 +462,10 @@ function handleClick(clientX, clientY) {
         if (clickedObject.isPiece) {
             // Case 1: Clicked a piece
             
-            // NEW CHECK: Prevent selecting a piece that doesn't belong to the user's role
-            if (clickedObject.pieceColor.charAt(0) !== userRole) {
-                 document.getElementById('status-message').textContent = `You can only move your own (${userRole === 'w' ? 'White' : 'Black'}) pieces.`;
+            // NEW CHECK: Prevent selecting a piece that doesn't belong to the current turn
+            // This is required even in offline mode for the core chess game logic.
+            if (clickedObject.pieceColor.charAt(0) !== turnColor) {
+                 document.getElementById('status-message').textContent = `You can only move the current player's (${turnColor === 'w' ? 'White' : 'Black'}) pieces.`;
                  highlightPiece(null);
                  return;
             }
