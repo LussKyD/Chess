@@ -13,8 +13,10 @@ let db, auth;
 window.currentUserRole = null; // Global variable to store the player's assigned color ('w' or 'b')
 
 // --- OFFLINE MODE SETUP ---
-// On GitHub Pages, firebaseConfig will be empty, so we explicitly set the app to offline mode
+// Expose the connection status globally so main.js can check it
 const isFirebaseConnected = Object.keys(firebaseConfig).length > 0;
+window.isFirebaseConnected = isFirebaseConnected; // <--- NEW GLOBAL FLAG
+
 let userId = crypto.randomUUID(); // Always generate a UUID as a user ID, regardless of connection status
 
 // If Firebase config is present, proceed with initialization
@@ -78,7 +80,7 @@ window.loadGameState = function() {
         
         // 3. Update UI status
         document.getElementById('status-message').textContent = 
-            'Offline Mode: You are White. Moves will not save or sync.';
+            'Offline Mode: You are playing locally.';
             
         return;
     }
@@ -150,7 +152,7 @@ window.initializeNewGame = async function() {
         // In offline mode, reset the local game state only
         window.game.reset();
         window.updateBoardFromFEN(window.game.fen());
-        document.getElementById('status-message').textContent = 'Offline Mode: Local game reset. You are White.';
+        document.getElementById('status-message').textContent = 'Offline Mode: Local game reset. You are playing locally.';
         return;
     }
     
@@ -185,7 +187,8 @@ window.initializeNewGame = async function() {
 window.updateGameInFirebase = async function(newFen) {
     if (!isFirebaseConnected) {
         // Do nothing in offline mode, move is already applied locally
-        document.getElementById('status-message').textContent = 'Offline Mode: Move executed, but not synced to Firebase.';
+        const turnColor = newFen.includes(' w ') ? 'White' : 'Black';
+        document.getElementById('status-message').textContent = `Offline Mode: Move executed. It is ${turnColor}'s turn.`;
         return;
     }
     
