@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 
 // Global variables provided by the environment
@@ -9,6 +9,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
 let db, auth, userId = 'loading...';
+window.currentUserRole = null; // NEW: Global variable to store the player's assigned color ('w' or 'b')
 
 // Mandatory Firebase setup and error handling
 if (Object.keys(firebaseConfig).length > 0) {
@@ -59,18 +60,58 @@ window.loadGameState = function() {
     if (!db || userId === 'loading...' || userId.includes('ERROR')) return;
 
     const gameRef = getGameDocRef();
-    onSnapshot(gameRef, (docSnap) => {
+    onSnapshot(gameRef, async (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
             console.log("Current game state from Firestore:", data);
             
-            // NEW: Call the 3D function to update the board state
+            // NEW LOGIC: Player Role Assignment and Status Update
+            let updateNeeded = false;
+            let players = data.players || { white: null, black: null };
+
+            // 1. Assign Role if user isn't already assigned
+            if (players.white === userId) {
+                window.currentUserRole = 'w';
+            } else if (players.black === userId) {
+                window.currentUserRole = 'b';
+            } else if (!players.white) {
+                // First player gets White
+                players.white = userId;
+                window.currentUserRole = 'w';
+                updateNeeded = true;
+                console.log("Assigned role: White");
+            } else if (!players.black && players.white !== userId) {
+                // Second player gets Black
+                players.black = userId;
+                window.currentUserRole = 'b';
+                updateNeeded = true;
+                console.log("Assigned role: Black");
+            }
+
+            // 2. Update Firestore if a new role was assigned
+            if (updateNeeded) {
+                try {
+                    await updateDoc(gameRef, { players: players, status: 'Active' });
+                    // No need to redraw here, onSnapshot will trigger again with new data
+                } catch (error) {
+                    console.error("Error assigning player role:", error);
+                }
+            }
+            
+            // 3. Update UI based on data and assigned role
             if (window.updateBoardFromFEN) {
                 window.updateBoardFromFEN(data.boardState);
             }
-
+            
+            const roleMessage = window.currentUserRole ? `You are ${window.currentUserRole === 'w' ? 'White' : 'Black'}.` : 'You are an Observer.';
+            const turnMessage = data.turn === 'White' ? "White's Turn" : "Black's Turn";
+            
             document.getElementById('status-message').textContent = 
-                `Game Loaded! Status: ${data.status || 'Active'}. Current Turn: ${data.turn || 'White'}`;
+                `${roleMessage} | ${turnMessage} | Game Status: ${data.status || 'Active'}`;
+                
+            // Expose the current game turn to main.js for move restriction
+            window.currentGameTurn = data.turn === 'White' ? 'w' : 'b'; 
+
         } else {
             console.log("No existing game state found. Initializing new game.");
             window.initializeNewGame(); 
@@ -88,15 +129,24 @@ window.loadGameState = function() {
 window.initializeNewGame = async function() {
     if (!db || userId === 'loading...' || userId.includes('ERROR')) return;
     
+    // Check if a game already exists before overwriting
+    const docSnap = await getDoc(getGameDocRef());
+    if (docSnap.exists() && docSnap.data().status !== 'Finished') {
+        console.log("Game already exists and is active. Reloading state instead of overwriting.");
+        return;
+    }
+
+    // Assign current user as White upon initialization
     const initialBoardState = {
         boardState: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Starting FEN
         turn: 'White',
-        players: { white: userId, black: 'Awaiting Player' },
+        players: { white: userId, black: null }, // Initialize with only White assigned
         status: 'Waiting for opponent'
     };
     try {
         await setDoc(getGameDocRef(), initialBoardState);
-        console.log("New game initialized!");
+        window.currentUserRole = 'w'; // Set role locally immediately
+        console.log("New game initialized! User is White.");
     } catch (error) {
         console.error("Error initializing new game:", error);
     }
