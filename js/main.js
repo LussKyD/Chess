@@ -292,7 +292,25 @@ function createPieceShape(type) {
 function updateBoardFromFEN(fen) {
     // 1. Clear existing pieces from the scene
     const piecesToRemove = scene.children.filter(obj => obj.isPiece);
-    piecesToRemove.forEach(piece => scene.remove(piece));
+    
+    // CRITICAL FIX: Ensure all resources are disposed before removing the piece.
+    piecesToRemove.forEach(piece => {
+        piece.traverse(child => {
+            if (child.isMesh) {
+                // Dipose of geometry and material to prevent memory leaks/renderer issues
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    // Dispose of texture maps if they exist
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(material => material.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+            }
+        });
+        scene.remove(piece);
+    });
 
     // 2. Set the engine's state
     try {
@@ -435,7 +453,7 @@ function handleClick(clientX, clientY) {
         }
     } else {
         // In Offline Mode, update the status message after a move to reflect the new turn
-        document.getElementById('status-message').textContent = `Offline Mode. It is ${turnColor === 'w' ? 'White' : 'Black'}'s turn.`;
+        // The final status update will occur after the move is successfully executed.
     }
     
     // ----------------------------------------------------
