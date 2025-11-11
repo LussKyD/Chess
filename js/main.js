@@ -101,14 +101,7 @@ function init() {
     raycaster = new THREE.Raycaster();
     mouse = new THREE.Vector2();
 
-    // 8. Event Listeners
-    window.addEventListener('resize', onWindowResize, false);
-    
-    // FIX: Re-adding the missing onTouchStart handler
-    container.addEventListener('touchstart', onTouchStart, false); 
-    
-    window.addEventListener('click', onClick, false); 
-    window.addEventListener('touchend', onTouchend, false); 
+    // 8. Event Listeners - REMOVED from here, moved to window.onload
 
     // Initial draw
     updateBoardFromFEN(game.fen());
@@ -495,7 +488,7 @@ function onTouchend(event) {
 }
 
 /**
- * NEW: Handles touch events to prevent default browser behavior and ensure smooth 3D interaction.
+ * Handles touch events to prevent default browser behavior and ensure smooth 3D interaction.
  */
 function onTouchStart(event) {
     if (event.touches.length > 0) {
@@ -509,4 +502,13 @@ function onTouchStart(event) {
 window.onload = function () {
     init();
     animate(); 
+
+    // --- CRITICAL FIX: Attach event listeners here after functions are defined ---
+    window.addEventListener('resize', onWindowResize, false);
+    
+    // Attaching the touch/click handlers to the renderer's DOM element for focus
+    renderer.domElement.addEventListener('touchstart', onTouchStart, false); 
+    renderer.domElement.addEventListener('click', onClick, false); 
+    renderer.domElement.addEventListener('touchend', onTouchend, false); 
+    // --------------------------------------------------------------------------
 }
