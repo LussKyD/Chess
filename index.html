@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Castle Chess: Royal Battle</title>
+    
+    <!-- Link to local CSS file -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Load Three.js and OrbitControls via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+</head>
+<body>
+
+    <div id="container">
+        <!-- The three.js canvas will be injected here -->
+    </div>
+
+    <div class="info-panel">
+        <div id="user-id-display">User ID: loading...</div>
+        <div id="status-message">Initializing game services...</div>
+        <div class="button-row">
+            <!-- These buttons call global functions exposed by js/firebase.js and js/main.js -->
+            <button class="action-button" onclick="window.initializeNewGame()">Start New Game</button>
+            <button class="action-button" onclick="window.resetCamera()">Reset View</button>
+        </div>
+        <p style="margin-top: 5px; font-size: 0.8rem; color: #718096;">
+            Use mouse/touch to drag and zoom the 3D scene.
+        </p>
+    </div>
+    
+    <!-- Load Firebase module first (it handles authentication and data logic) -->
+    <script type="module" src="js/firebase.js"></script>
+
+    <!-- Load the main Three.js logic -->
+    <script src="js/main.js"></script>
+</body>
+</html>
