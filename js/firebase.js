@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 
 // Global variables provided by the environment
@@ -18,6 +18,7 @@ if (Object.keys(firebaseConfig).length > 0) {
     auth = getAuth(app);
     
     onAuthStateChanged(auth, async (user) => {
+        // ... (Authentication logic remains the same) ...
         if (user) {
             userId = user.uid;
             document.getElementById('user-id-display').textContent = 'User ID: ' + userId;
@@ -63,7 +64,11 @@ window.loadGameState = function() {
             const data = docSnap.data();
             console.log("Current game state from Firestore:", data);
             
-            // TODO: Add logic here to update the 3D board based on data.boardState
+            // NEW: Call the 3D function to update the board state
+            if (window.updateBoardFromFEN) {
+                window.updateBoardFromFEN(data.boardState);
+            }
+
             document.getElementById('status-message').textContent = 
                 `Game Loaded! Status: ${data.status || 'Active'}. Current Turn: ${data.turn || 'White'}`;
         } else {
@@ -84,7 +89,7 @@ window.initializeNewGame = async function() {
     if (!db || userId === 'loading...' || userId.includes('ERROR')) return;
     
     const initialBoardState = {
-        boardState: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        boardState: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Starting FEN
         turn: 'White',
         players: { white: userId, black: 'Awaiting Player' },
         status: 'Waiting for opponent'
@@ -94,5 +99,28 @@ window.initializeNewGame = async function() {
         console.log("New game initialized!");
     } catch (error) {
         console.error("Error initializing new game:", error);
+    }
+}
+
+/**
+ * NEW: Updates the FEN string in Firestore after a valid move.
+ * @param {string} newFen - The new FEN string after the move.
+ */
+window.updateGameInFirebase = async function(newFen) {
+    if (!db || userId === 'loading...' || userId.includes('ERROR')) return;
+
+    const gameRef = getGameDocRef();
+    const newTurn = newFen.includes(' w ') ? 'White' : 'Black';
+
+    try {
+        await updateDoc(gameRef, {
+            boardState: newFen,
+            turn: newTurn,
+            // You can add logic here to check game.in_checkmate(), game.in_draw(), etc., to update status
+        });
+        console.log("Game state updated successfully with new FEN.");
+    } catch (error) {
+        console.error("Error updating game state:", error);
+        document.getElementById('status-message').textContent = "ERROR: Failed to save move to Firebase.";
     }
 }
