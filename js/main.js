@@ -290,11 +290,12 @@ function createPieceShape(type) {
  * Renders the 3D chess pieces based on the FEN string from chess.js.
  */
 function updateBoardFromFEN(fen) {
-    // 1. Clear existing pieces from the scene
+    // 1. Collect all pieces currently in the scene
     const piecesToRemove = scene.children.filter(obj => obj.isPiece);
     
-    // CRITICAL FIX: Ensure all resources are disposed before removing the piece.
+    // CRITICAL FIX: Iterate through the pieces, dispose of resources, and remove them.
     piecesToRemove.forEach(piece => {
+        // Dispose of children meshes' resources
         piece.traverse(child => {
             if (child.isMesh) {
                 // Dipose of geometry and material to prevent memory leaks/renderer issues
@@ -309,8 +310,12 @@ function updateBoardFromFEN(fen) {
                 }
             }
         });
+        // Remove the entire THREE.Group object from the scene
         scene.remove(piece);
     });
+
+    // Reset selected piece state after clearing the board
+    selectedPiece = null;
 
     // 2. Set the engine's state
     try {
