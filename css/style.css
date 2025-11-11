@@ -1,0 +1,66 @@
+/* --- Global Reset and Base Styles --- */
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background-color: #1a1a1a; /* Dark background */
+    color: #d1d5db; /* Light grey text */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* --- Canvas Container --- */
+#container {
+    flex-grow: 1;
+    min-height: 400px; /* Minimum height for mobile usability */
+    width: 100%;
+    touch-action: none; /* Crucial for better 3D touch control */
+}
+
+/* --- Info Panel and Controls (Stone/Royal Theme) --- */
+.info-panel {
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 10px 20px;
+    text-align: center;
+    border-top: 2px solid #5a5a5a;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.5);
+    font-size: 0.9rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.button-row {
+    padding: 8px;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.action-button {
+    padding: 10px 20px;
+    background-color: #4a5568; /* Grey/Stone look */
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+    box-shadow: 0 4px #2d3748;
+    font-weight: bold;
+    min-width: 120px;
+}
+
+.action-button:hover {
+    background-color: #2d3748;
+}
+
+.action-button:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px #2d3748;
+}
+
+#status-message {
+    margin-top: 5px;
+    font-size: 1.1rem;
+    color: #fbd38d; /* Gold/Royal color for status */
+}
