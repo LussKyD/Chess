@@ -19,7 +19,7 @@ const HIGHLIGHT_COLOR = 0xfbd38d; // Gold/Royal highlight
 window.resetCamera = resetCamera; 
 window.updateBoardFromFEN = updateBoardFromFEN; // Expose for Firebase to call
 
-// --- Coordinate Conversion Helpers ---
+// --- Coordinate Conversion Helpers (remain the same) ---
 
 /**
  * Converts Three.js file/rank coordinates (0-7) to algebraic notation (a1-h8).
@@ -48,7 +48,7 @@ function to3DCoords(algebraic) {
 }
 
 
-// --- Three.js Setup (init, animate, etc. remain the same) ---
+// --- Three.js Setup (init, animate, etc.) ---
 
 function init() {
     // 1. Scene Setup
@@ -96,7 +96,6 @@ function init() {
     // 6. Draw elements
     createCastleBoard();
     createCastleBackdrop();
-    // createChessPieces(); // Pieces now drawn by updateBoardFromFEN
 
     // 7. Raycasting Setup 
     raycaster = new THREE.Raycaster();
@@ -104,7 +103,10 @@ function init() {
 
     // 8. Event Listeners
     window.addEventListener('resize', onWindowResize, false);
-    container.addEventListener('touchstart', onTouchStart, false);
+    
+    // FIX: Re-adding the missing onTouchStart handler
+    container.addEventListener('touchstart', onTouchStart, false); 
+    
     window.addEventListener('click', onClick, false); 
     window.addEventListener('touchend', onTouchend, false); 
 
@@ -337,6 +339,9 @@ function updateBoardFromFEN(fen) {
 function clearHighlights() {
     window.boardSquares.forEach(square => {
         square.material.color.set(square.originalColor);
+        // Clear emissive highlights too
+        square.material.emissive.setHex(0x000000); 
+        square.material.emissiveIntensity = 0;
     });
 }
 
@@ -344,20 +349,28 @@ function clearHighlights() {
  * Highlights a selected piece and potential move squares.
  */
 function highlightPiece(piece) {
+    // Clear previous state first
     if (selectedPiece) {
         selectedPiece.position.y -= 1.5; // Lower previous piece
+        selectedPiece.traverse(child => {
+            if (child.isMesh) {
+                child.material.emissive.setHex(0x000000); 
+                child.material.emissiveIntensity = 0;
+            }
+        });
     }
     clearHighlights();
     selectedPiece = null;
 
+
     if (piece) {
+        // Set new selected piece state
         selectedPiece = piece;
         selectedPiece.position.y += 1.5; // Raise selected piece slightly
         
-        // Highlight piece itself
+        // Highlight piece itself (Emissive color for subtle highlight effect)
         selectedPiece.traverse(child => {
              if (child.isMesh) {
-                 // Use Emissive color for subtle highlight effect
                  child.material.emissive.setHex(HIGHLIGHT_COLOR); 
                  child.material.emissiveIntensity = 0.5;
              }
@@ -380,17 +393,7 @@ function highlightPiece(piece) {
 
         document.getElementById('status-message').textContent = 
             `${piece.pieceColor.toUpperCase()} ${piece.pieceType} selected from ${piece.userData.algebraic}.`;
-    } else {
-         // Clear emissive highlight from previous piece
-         if (selectedPiece) {
-             selectedPiece.traverse(child => {
-                if (child.isMesh) {
-                    child.material.emissive.setHex(0x000000); 
-                    child.material.emissiveIntensity = 0;
-                }
-            });
-         }
-    }
+    } 
 }
 
 /**
@@ -419,7 +422,12 @@ function handleClick(clientX, clientY) {
         if (clickedObject.isPiece) {
             // Case 1: Clicked a piece
             
-            // TODO: Add turn validation here (e.g., if (clickedObject.pieceColor !== game.turn())) return;
+            // Check if the clicked piece belongs to the current turn's color
+            if (clickedObject.pieceColor.charAt(0) !== game.turn()) {
+                 document.getElementById('status-message').textContent = `It is ${game.turn() === 'w' ? 'White' : 'Black'}'s turn.`;
+                 highlightPiece(null);
+                 return;
+            }
             
             highlightPiece(clickedObject);
         } else if (clickedObject.isSquare && selectedPiece) {
@@ -435,17 +443,20 @@ function handleClick(clientX, clientY) {
             });
 
             if (move) {
-                // Move is VALID. Now update the 3D board and the Firebase state.
-                updateBoardFromFEN(game.fen()); // Redraw entire board based on new FEN
+                // Move is VALID.
+                const newFen = game.fen();
+                updateBoardFromFEN(newFen); // Redraw entire board based on new FEN
                 
-                // --- TODO: Update Firebase here ---
-                // window.updateGameInFirebase(game.fen()); 
+                // Update Firebase state (Crucial for multiplayer)
+                if (window.updateGameInFirebase) {
+                    window.updateGameInFirebase(newFen);
+                }
 
                 document.getElementById('status-message').textContent = 
-                    `Move: ${sourceSquare} -> ${targetSquare}. ${game.turn() === 'w' ? 'White' : 'Black'}'s turn.`;
+                    `Move: ${move.san}. ${game.turn() === 'w' ? 'White' : 'Black'}'s turn.`;
+                
             } else {
-                // Move is INVALID. If clicking a piece of the same color, reselect it.
-                // Otherwise, deselect everything.
+                // Move is INVALID.
                 document.getElementById('status-message').textContent = 
                     `Invalid move from ${sourceSquare} to ${targetSquare}.`;
             }
@@ -482,6 +493,17 @@ function onTouchend(event) {
         handleClick(touch.clientX, touch.clientY);
     }, 100); 
 }
+
+/**
+ * NEW: Handles touch events to prevent default browser behavior and ensure smooth 3D interaction.
+ */
+function onTouchStart(event) {
+    if (event.touches.length > 0) {
+        // Prevent screen scrolling when interacting with 3D canvas
+        event.preventDefault(); 
+    }
+}
+
 
 // Start the application after the window loads
 window.onload = function () {
