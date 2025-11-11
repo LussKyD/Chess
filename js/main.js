@@ -5,12 +5,51 @@ const BOARD_SIZE = 8;
 const SQUARE_SIZE = 10;
 const BOARD_WIDTH = BOARD_SIZE * SQUARE_SIZE;
 
-// Expose resetCamera globally for the HTML button
+// --- Chess Engine and Game State ---
+let game = new Chess(); // The chess.js engine instance
+window.game = game; // Expose globally for debugging
+let currentBoardState = {}; // Stores the latest FEN/turn from Firebase
+
+// --- Interaction ---
+let raycaster, mouse;
+let selectedPiece = null;
+const HIGHLIGHT_COLOR = 0xfbd38d; // Gold/Royal highlight
+
+// Expose functions globally
 window.resetCamera = resetCamera; 
+window.updateBoardFromFEN = updateBoardFromFEN; // Expose for Firebase to call
+
+// --- Coordinate Conversion Helpers ---
 
 /**
- * Initializes the three.js environment (Scene, Camera, Renderer, Lights).
+ * Converts Three.js file/rank coordinates (0-7) to algebraic notation (a1-h8).
+ * @param {number} file - 0 to 7 (A to H)
+ * @param {number} rank - 0 to 7 (1 to 8)
+ * @returns {string} Algebraic notation (e.g., 'a1', 'h8')
  */
+function toAlgebraic(file, rank) {
+    const fileChar = String.fromCharCode('a'.charCodeAt(0) + file);
+    const rankNum = rank + 1;
+    return fileChar + rankNum;
+}
+
+/**
+ * Converts algebraic notation (a1-h8) to Three.js file/rank coordinates (0-7).
+ * @param {string} algebraic - Algebraic notation (e.g., 'a1', 'h8')
+ * @returns {{file: number, rank: number}} Coords
+ */
+function to3DCoords(algebraic) {
+    const file = algebraic.charCodeAt(0) - 'a'.charCodeAt(0);
+    const rank = parseInt(algebraic.charAt(1), 10) - 1;
+    
+    const x = (file - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
+    const z = (rank - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
+    return new THREE.Vector3(x, 0.5, z);
+}
+
+
+// --- Three.js Setup (init, animate, etc. remain the same) ---
+
 function init() {
     // 1. Scene Setup
     scene = new THREE.Scene();
@@ -57,34 +96,35 @@ function init() {
     // 6. Draw elements
     createCastleBoard();
     createCastleBackdrop();
-    createChessPieces();
+    // createChessPieces(); // Pieces now drawn by updateBoardFromFEN
 
-    // 7. Event Listeners
+    // 7. Raycasting Setup 
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
+
+    // 8. Event Listeners
     window.addEventListener('resize', onWindowResize, false);
     container.addEventListener('touchstart', onTouchStart, false);
+    window.addEventListener('click', onClick, false); 
+    window.addEventListener('touchend', onTouchend, false); 
+
+    // Initial draw
+    updateBoardFromFEN(game.fen());
 }
 
-/**
- * Handles window resizing to maintain aspect ratio and redraw canvas.
- */
 function onWindowResize() {
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
 }
 
-/**
- * Resets the camera view to the initial position.
- */
 function resetCamera() {
     controls.reset();
 }
 
-/**
- * Creates the 8x8 checkerboard base with stone textures.
- */
 function createCastleBoard() {
     const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x5a5a5a }); 
+    window.boardSquares = []; // Store squares globally for easy access
 
     const baseGeometry = new THREE.BoxGeometry(BOARD_WIDTH + 4, 2, BOARD_WIDTH + 4);
     const baseMesh = new THREE.Mesh(baseGeometry, floorMaterial);
@@ -95,27 +135,30 @@ function createCastleBoard() {
     const lightColor = new THREE.Color(0xc0c0c0); 
     const darkColor = new THREE.Color(0x404040); 
 
-    for (let i = 0; i < BOARD_SIZE; i++) {
-        for (let j = 0; j < BOARD_SIZE; j++) {
-            const color = (i + j) % 2 === 0 ? lightColor : darkColor;
+    for (let rank = 0; rank < BOARD_SIZE; rank++) {
+        for (let file = 0; file < BOARD_SIZE; file++) {
+            const color = (file + rank) % 2 === 0 ? lightColor : darkColor;
             const material = new THREE.MeshStandardMaterial({ color: color });
             const geometry = new THREE.BoxGeometry(SQUARE_SIZE, 0.5, SQUARE_SIZE);
             const square = new THREE.Mesh(geometry, material);
+            
+            square.isSquare = true;
+            square.originalColor = color;
+            square.userData.algebraic = toAlgebraic(file, rank); // Store algebraic name
+            square.userData.file = file; 
+            square.userData.rank = rank;
 
-            // Position square relative to the center (0,0,0)
-            square.position.x = (i - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
-            square.position.z = (j - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
+            square.position.x = (file - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
+            square.position.z = (rank - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
             square.position.y = 0.25; 
 
             square.receiveShadow = true;
             scene.add(square);
+            window.boardSquares.push(square);
         }
     }
 }
 
-/**
- * Adds simple castle elements (pillars, walls) to set the scene.
- */
 function createCastleBackdrop() {
     const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 });
 
@@ -145,8 +188,7 @@ function createCastleBackdrop() {
 }
 
 /**
- * Creates a single chess piece shape based on the type.
- * Note: Shapes are simplified royal/castle structures.
+ * Creates a single chess piece shape based on the type (K, Q, R, B, N, P).
  */
 function createPieceShape(type) {
     const group = new THREE.Group();
@@ -155,15 +197,15 @@ function createPieceShape(type) {
     baseMesh.position.y = 0.5;
     group.add(baseMesh);
 
-    // Simple geometry definitions for the royal theme
-    switch (type) {
-        case 'P': // Pawn (Sphere)
+    // Simple geometry definitions (same as before)
+    switch (type.toUpperCase()) {
+        case 'P': 
             const pawnHead = new THREE.SphereGeometry(1.5, 8, 8);
             const pawnMesh = new THREE.Mesh(pawnHead);
             pawnMesh.position.y = 3;
             group.add(pawnMesh);
             break;
-        case 'R': // Rook (Tower)
+        case 'R': 
             const rookBody = new THREE.BoxGeometry(3, 5, 3);
             const rookMesh = new THREE.Mesh(rookBody);
             rookMesh.position.y = 3.5;
@@ -173,7 +215,7 @@ function createPieceShape(type) {
             topMesh.position.y = 6;
             group.add(topMesh);
             break;
-        case 'N': // Knight (Angular Body)
+        case 'N': 
             const knightBody = new THREE.BoxGeometry(2, 5, 2);
             const knightMesh = new THREE.Mesh(knightBody);
             knightMesh.position.y = 3.5;
@@ -184,7 +226,7 @@ function createPieceShape(type) {
             headMesh.rotation.y = Math.PI / 4;
             group.add(headMesh);
             break;
-        case 'B': // Bishop (Mitre)
+        case 'B': 
             const bishopBody = new THREE.CylinderGeometry(2, 2, 6, 8);
             const bishopMesh = new THREE.Mesh(bishopBody);
             bishopMesh.position.y = 3.5;
@@ -194,7 +236,7 @@ function createPieceShape(type) {
             sphereMesh.position.y = 6.5;
             group.add(sphereMesh);
             break;
-        case 'Q': // Queen (Crown)
+        case 'Q': 
             const queenBody = new THREE.CylinderGeometry(2.5, 2.5, 7, 16);
             const queenMesh = new THREE.Mesh(queenBody);
             queenMesh.position.y = 4;
@@ -205,7 +247,7 @@ function createPieceShape(type) {
             crownMesh.rotation.x = Math.PI / 2;
             group.add(crownMesh);
             break;
-        case 'K': // King (Cross)
+        case 'K': 
             const kingBody = new THREE.CylinderGeometry(2.5, 2.5, 8, 16);
             const kingMesh = new THREE.Mesh(kingBody);
             kingMesh.position.y = 4.5;
@@ -221,50 +263,67 @@ function createPieceShape(type) {
             break;
     }
     
-    // Enable shadows for all piece parts
     group.traverse(child => {
         if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;
         }
     });
+    
+    group.isPiece = true;
+    group.pieceType = type.toUpperCase();
+
     return group;
 }
 
 /**
- * Places all chess pieces in the initial starting positions (FEN setup).
+ * Renders the 3D chess pieces based on the FEN string from chess.js.
  */
-function createChessPieces() {
-    const whiteMaterial = new THREE.MeshPhongMaterial({ color: 0xe0e0e0, shininess: 80 }); // Silver
-    const blackMaterial = new THREE.MeshPhongMaterial({ color: 0x333333, shininess: 80 }); // Dark Steel
+function updateBoardFromFEN(fen) {
+    // 1. Clear existing pieces from the scene
+    const piecesToRemove = scene.children.filter(obj => obj.isPiece);
+    piecesToRemove.forEach(piece => scene.remove(piece));
 
-    const pieceMap = {
-        0: ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'],
-        1: ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
-        6: ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
-        7: ['R', 'N', 'B', 'K', 'Q', 'B', 'N', 'R']
-    };
+    // 2. Set the engine's state
+    try {
+        game.load(fen);
+    } catch (e) {
+        console.error("Invalid FEN string received:", fen, e);
+        document.getElementById('status-message').textContent = "ERROR: Invalid Game State.";
+        return;
+    }
+
+    // 3. Draw new pieces
+    const board = game.board(); // Returns 8x8 array of squares
+    
+    const whiteMaterial = new THREE.MeshPhongMaterial({ color: 0xe0e0e0, shininess: 80 }); 
+    const blackMaterial = new THREE.MeshPhongMaterial({ color: 0x333333, shininess: 80 }); 
 
     for (let rank = 0; rank < BOARD_SIZE; rank++) {
-        if (pieceMap[rank]) {
-            const material = rank < 4 ? blackMaterial : whiteMaterial;
-            const pieceTypes = rank < 4 ? pieceMap[rank] : pieceMap[7 - rank]; 
+        for (let file = 0; file < BOARD_SIZE; file++) {
+            const pieceData = board[7 - rank][file]; // Chess array is rank 8-1, we iterate 0-7
             
-            for (let file = 0; file < BOARD_SIZE; file++) {
-                const type = pieceTypes[file];
-                const piece = createPieceShape(type);
+            if (pieceData) {
+                const pieceType = pieceData.type.toUpperCase();
+                const pieceColor = pieceData.color === 'w' ? 'white' : 'black';
+                const material = pieceColor === 'white' ? whiteMaterial : blackMaterial;
                 
-                // Assign color material
+                const piece = createPieceShape(pieceType);
+                
+                piece.pieceColor = pieceColor;
+                piece.userData.algebraic = toAlgebraic(file, rank); // Store current position
+                
+                // Assign color material to children
                 piece.traverse(child => {
                     if (child.isMesh) {
                         child.material = material;
                     }
                 });
 
-                // Calculate position relative to the center
-                piece.position.x = (file - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
-                piece.position.z = (rank - BOARD_SIZE / 2 + 0.5) * SQUARE_SIZE;
-                piece.position.y = 0.5;
+                // Set position
+                const pos = to3DCoords(piece.userData.algebraic);
+                piece.position.set(pos.x, pos.y, pos.z);
+
                 piece.scale.set(1.5, 1.5, 1.5);
                 scene.add(piece);
             }
@@ -273,21 +332,155 @@ function createChessPieces() {
 }
 
 /**
- * The main animation loop.
+ * Resets all board squares to their original color.
  */
-function animate() {
-    requestAnimationFrame(animate);
-    controls.update(); 
-    renderer.render(scene, camera);
+function clearHighlights() {
+    window.boardSquares.forEach(square => {
+        square.material.color.set(square.originalColor);
+    });
 }
 
 /**
- * Handles touch events to prevent default browser behavior and ensure smooth 3D interaction.
+ * Highlights a selected piece and potential move squares.
  */
-function onTouchStart(event) {
-    if (event.touches.length > 0) {
-        event.preventDefault(); 
+function highlightPiece(piece) {
+    if (selectedPiece) {
+        selectedPiece.position.y -= 1.5; // Lower previous piece
     }
+    clearHighlights();
+    selectedPiece = null;
+
+    if (piece) {
+        selectedPiece = piece;
+        selectedPiece.position.y += 1.5; // Raise selected piece slightly
+        
+        // Highlight piece itself
+        selectedPiece.traverse(child => {
+             if (child.isMesh) {
+                 // Use Emissive color for subtle highlight effect
+                 child.material.emissive.setHex(HIGHLIGHT_COLOR); 
+                 child.material.emissiveIntensity = 0.5;
+             }
+        });
+
+        // ----------------------------------------------------
+        // Highlight possible move squares using chess.js
+        // ----------------------------------------------------
+        const moves = game.moves({ square: piece.userData.algebraic, verbose: true });
+        
+        window.boardSquares.forEach(square => {
+            const targetSquare = square.userData.algebraic;
+            // Check if targetSquare is in the list of valid moves
+            const isValidTarget = moves.some(move => move.to === targetSquare);
+
+            if (isValidTarget) {
+                square.material.color.set(0x8bc34a); // Green highlight for moves
+            }
+        });
+
+        document.getElementById('status-message').textContent = 
+            `${piece.pieceColor.toUpperCase()} ${piece.pieceType} selected from ${piece.userData.algebraic}.`;
+    } else {
+         // Clear emissive highlight from previous piece
+         if (selectedPiece) {
+             selectedPiece.traverse(child => {
+                if (child.isMesh) {
+                    child.material.emissive.setHex(0x000000); 
+                    child.material.emissiveIntensity = 0;
+                }
+            });
+         }
+    }
+}
+
+/**
+ * Handles the click event for piece selection or movement.
+ */
+function handleClick(clientX, clientY) {
+    // 1. Calculate mouse position in normalized device coordinates (-1 to +1)
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ( (clientX - rect.left) / rect.width ) * 2 - 1;
+    mouse.y = - ( (clientY - rect.top) / rect.height ) * 2 + 1;
+
+    // 2. Update the picking ray with the camera and mouse position
+    raycaster.setFromCamera(mouse, camera);
+
+    // 3. Find intersecting objects (pieces and squares)
+    const interactableObjects = scene.children.filter(obj => obj.isPiece || obj.isSquare);
+    const intersects = raycaster.intersectObjects(interactableObjects, true);
+
+    if (intersects.length > 0) {
+        let clickedObject = intersects[0].object;
+        
+        while (!clickedObject.isPiece && !clickedObject.isSquare && clickedObject.parent) {
+            clickedObject = clickedObject.parent;
+        }
+
+        if (clickedObject.isPiece) {
+            // Case 1: Clicked a piece
+            
+            // TODO: Add turn validation here (e.g., if (clickedObject.pieceColor !== game.turn())) return;
+            
+            highlightPiece(clickedObject);
+        } else if (clickedObject.isSquare && selectedPiece) {
+            // Case 2: Clicked a square with a piece already selected
+            const sourceSquare = selectedPiece.userData.algebraic;
+            const targetSquare = clickedObject.userData.algebraic;
+
+            // Attempt to move using chess.js
+            const move = game.move({ 
+                from: sourceSquare, 
+                to: targetSquare,
+                promotion: 'q' // Always promote to queen for simplicity initially
+            });
+
+            if (move) {
+                // Move is VALID. Now update the 3D board and the Firebase state.
+                updateBoardFromFEN(game.fen()); // Redraw entire board based on new FEN
+                
+                // --- TODO: Update Firebase here ---
+                // window.updateGameInFirebase(game.fen()); 
+
+                document.getElementById('status-message').textContent = 
+                    `Move: ${sourceSquare} -> ${targetSquare}. ${game.turn() === 'w' ? 'White' : 'Black'}'s turn.`;
+            } else {
+                // Move is INVALID. If clicking a piece of the same color, reselect it.
+                // Otherwise, deselect everything.
+                document.getElementById('status-message').textContent = 
+                    `Invalid move from ${sourceSquare} to ${targetSquare}.`;
+            }
+            highlightPiece(null); // Deselect piece after move attempt
+            
+        } else {
+            // Case 3: Clicked an empty square without a selected piece
+            highlightPiece(null);
+        }
+    } else {
+        // Clicked outside the board/pieces
+        highlightPiece(null);
+    }
+}
+
+/**
+ * Event handler for mouse click (desktop).
+ */
+function onClick(event) {
+    // If controls are being dragged, ignore the click as a selection/move
+    if (controls.enabled && controls.isDragging) return; 
+    handleClick(event.clientX, event.clientY);
+}
+
+/**
+ * Event handler for touch end (mobile tap).
+ */
+function onTouchend(event) {
+    event.preventDefault(); 
+    const touch = event.changedTouches[0];
+    
+    // Small delay to ensure OrbitControls finishes its drag inertia, then process click
+    setTimeout(() => {
+        handleClick(touch.clientX, touch.clientY);
+    }, 100); 
 }
 
 // Start the application after the window loads
