@@ -408,23 +408,26 @@ function highlightPiece(piece) {
  * Handles the click event for piece selection or movement.
  */
 function handleClick(clientX, clientY) {
-    // ----------------------------------------------------
-    // NEW LOGIC: Turn and Role Restriction
-    // ----------------------------------------------------
-    const userRole = window.currentUserRole; // 'w' or 'b'
+    // Retrieve the current user role from the Firebase script (or Offline Mode fallback)
+    const userRole = window.currentUserRole; 
     const turnColor = game.turn(); // 'w' or 'b'
-    const isTurn = userRole === turnColor;
-
+    
+    // ----------------------------------------------------
+    // NEW BLOCK: Turn and Role Restriction
+    // ----------------------------------------------------
     if (!userRole) {
-        document.getElementById('status-message').textContent = `Please wait for the game to load your player role or for an opponent to join.`;
+        // This should only happen during initialization. 
+        // In offline mode, userRole is set to 'w' immediately by firebase.js.
+        document.getElementById('status-message').textContent = 
+            `Please wait for the game to load your player role.`;
         highlightPiece(null);
-        return;
+        return; 
     }
     
-    // Check 1: Is it the current user's turn?
-    if (!isTurn) {
-        const turnName = turnColor === 'w' ? 'White' : 'Black';
-        document.getElementById('status-message').textContent = `It is currently ${turnName}'s turn, not yours.`;
+    // Check if it's the current user's turn
+    if (userRole !== turnColor) {
+        document.getElementById('status-message').textContent = 
+            `It is ${turnColor === 'w' ? 'White' : 'Black'}'s turn, not yours.`;
         highlightPiece(null);
         return;
     }
@@ -452,7 +455,7 @@ function handleClick(clientX, clientY) {
         if (clickedObject.isPiece) {
             // Case 1: Clicked a piece
             
-            // Check 2: Does the piece color match the current user's role?
+            // NEW CHECK: Prevent selecting a piece that doesn't belong to the user's role
             if (clickedObject.pieceColor.charAt(0) !== userRole) {
                  document.getElementById('status-message').textContent = `You can only move your own (${userRole === 'w' ? 'White' : 'Black'}) pieces.`;
                  highlightPiece(null);
