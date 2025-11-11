@@ -408,6 +408,28 @@ function highlightPiece(piece) {
  * Handles the click event for piece selection or movement.
  */
 function handleClick(clientX, clientY) {
+    // ----------------------------------------------------
+    // NEW LOGIC: Turn and Role Restriction
+    // ----------------------------------------------------
+    const userRole = window.currentUserRole; // 'w' or 'b'
+    const turnColor = game.turn(); // 'w' or 'b'
+    const isTurn = userRole === turnColor;
+
+    if (!userRole) {
+        document.getElementById('status-message').textContent = `Please wait for the game to load your player role or for an opponent to join.`;
+        highlightPiece(null);
+        return;
+    }
+    
+    // Check 1: Is it the current user's turn?
+    if (!isTurn) {
+        const turnName = turnColor === 'w' ? 'White' : 'Black';
+        document.getElementById('status-message').textContent = `It is currently ${turnName}'s turn, not yours.`;
+        highlightPiece(null);
+        return;
+    }
+    // ----------------------------------------------------
+    
     // 1. Calculate mouse position in normalized device coordinates (-1 to +1)
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ( (clientX - rect.left) / rect.width ) * 2 - 1;
@@ -430,9 +452,9 @@ function handleClick(clientX, clientY) {
         if (clickedObject.isPiece) {
             // Case 1: Clicked a piece
             
-            // Check if the clicked piece belongs to the current turn's color
-            if (clickedObject.pieceColor.charAt(0) !== game.turn()) {
-                 document.getElementById('status-message').textContent = `It is ${game.turn() === 'w' ? 'White' : 'Black'}'s turn.`;
+            // Check 2: Does the piece color match the current user's role?
+            if (clickedObject.pieceColor.charAt(0) !== userRole) {
+                 document.getElementById('status-message').textContent = `You can only move your own (${userRole === 'w' ? 'White' : 'Black'}) pieces.`;
                  highlightPiece(null);
                  return;
             }
