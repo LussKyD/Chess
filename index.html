@@ -11,6 +11,9 @@
     <!-- Load Three.js and OrbitControls via CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- NEW: Load the chess.js engine library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.js"></script>
     
 </head>
 <body>
@@ -32,10 +35,10 @@
         </p>
     </div>
     
-    <!-- Load Firebase module first (it handles authentication and data logic) -->
-    <script type="module" src="js/firebase.js"></script>
-
-    <!-- Load the main Three.js logic -->
+    <!-- Load the main Three.js logic first. It contains window.onload. -->
     <script src="js/main.js"></script>
+
+    <!-- Load Firebase module second. It must have 'type="module"' -->
+    <script type="module" src="js/firebase.js"></script>
 </body>
 </html>
