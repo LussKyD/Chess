@@ -19,7 +19,7 @@ const HIGHLIGHT_COLOR = 0xfbd38d; // Gold/Royal highlight
 window.resetCamera = resetCamera; 
 window.updateBoardFromFEN = updateBoardFromFEN; // Expose for Firebase to call
 
-// --- Animation Loop ---
+// --- Animation Loop (MOVED TO TOP TO PREVENT REFERENCE ERROR) ---
 
 /**
  * Renders the scene and updates controls every frame.
@@ -517,7 +517,7 @@ function onTouchStart(event) {
 window.onload = function () {
     init();
     
-    // The animate() function is now defined above init(), so this call is safe.
+    // The animate() function is defined near the top, so this call is safe.
     animate(); 
 
     // --- Attach event listeners to the renderer's DOM element for reliable interaction ---
