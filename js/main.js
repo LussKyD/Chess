@@ -436,29 +436,22 @@ function handleClick(clientX, clientY) {
     const turnColor = game.turn(); // 'w' or 'b'
     
     // ----------------------------------------------------
-    // NEW BLOCK: Turn and Role Restriction
+    // Turn and Role Restriction (allows all moves offline)
     // ----------------------------------------------------
     if (!userRole) {
-        // This should only happen during initialization. 
-        document.getElementById('status-message').textContent = 
-            `Please wait for the game to load your player role.`;
+        document.getElementById('status-message').textContent = `Please wait for the game to load your player role.`;
         highlightPiece(null);
         return; 
     }
     
-    // CRITICAL FIX: Only enforce turn and role restrictions if we are connected to Firebase.
-    // In Offline Mode, we allow all moves to enable single-player testing.
+    // Only enforce turn and role restrictions if we are connected to Firebase.
     if (window.isFirebaseConnected) {
-        // Check if it's the current user's turn
         if (userRole !== turnColor) {
             document.getElementById('status-message').textContent = 
                 `It is ${turnColor === 'w' ? 'White' : 'Black'}'s turn, not yours.`;
             highlightPiece(null);
             return;
         }
-    } else {
-        // In Offline Mode, update the status message after a move to reflect the new turn
-        // The final status update will occur after the move is successfully executed.
     }
     
     // ----------------------------------------------------
@@ -476,17 +469,24 @@ function handleClick(clientX, clientY) {
     const intersects = raycaster.intersectObjects(interactableObjects, true);
 
     if (intersects.length > 0) {
+        // NEW ROBUST LOGIC: Traverse up the scene graph to find the top-level piece group or square.
         let clickedObject = intersects[0].object;
         
-        while (!clickedObject.isPiece && !clickedObject.isSquare && clickedObject.parent) {
+        // Walk up until we find an object we explicitly marked as a Piece or a Square
+        while (clickedObject && !clickedObject.isPiece && !clickedObject.isSquare) {
             clickedObject = clickedObject.parent;
+        }
+        
+        // If we reach the root scene without finding a piece or square, exit
+        if (!clickedObject || (!clickedObject.isPiece && !clickedObject.isSquare)) {
+             highlightPiece(null);
+             return;
         }
 
         if (clickedObject.isPiece) {
             // Case 1: Clicked a piece
             
-            // NEW CHECK: Prevent selecting a piece that doesn't belong to the current turn
-            // This is required even in offline mode for the core chess game logic.
+            // CHECK: Must match the current turn color (applies in ALL modes for core rules)
             if (clickedObject.pieceColor.charAt(0) !== turnColor) {
                  document.getElementById('status-message').textContent = `You can only move the current player's (${turnColor === 'w' ? 'White' : 'Black'}) pieces.`;
                  highlightPiece(null);
@@ -507,7 +507,7 @@ function handleClick(clientX, clientY) {
             });
 
             if (move) {
-                // Move is VALID.
+                // Move is VALID (including a capture).
                 const newFen = game.fen();
                 updateBoardFromFEN(newFen); // Redraw entire board based on new FEN
                 
